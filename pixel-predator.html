@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Predator - Snake vs Pac-Man</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P:wght@400&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #000000, #1a1a2e);
+            font-family: 'Press Start 2P', monospace;
+            color: #ffffff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 90vw;
+            height: 80vh;
+            max-width: 800px;
+            max-height: 600px;
+            border: 4px solid #00ff00;
+            box-shadow: 0 0 20px #00ff00;
+        }
+
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+            background: #0f0f23;
+            display: block;
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            font-size: 12px;
+            z-index: 10;
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            border: 3px solid #ff0000;
+            padding: 30px;
+            text-align: center;
+            display: none;
+            z-index: 100;
+        }
+
+        #gameOver h2 {
+            color: #ff0000;
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+
+        #gameOver button {
+            background: #00ff00;
+            color: #000000;
+            border: none;
+            padding: 10px 20px;
+            font-family: 'Press Start 2P', monospace;
+            font-size: 10px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        #gameOver button:hover {
+            background: #00cc00;
+        }
+
+        .joystick-container {
+            position: absolute;
+            bottom: 20px;
+            width: 80px;
+            height: 80px;
+            display: none;
+        }
+
+        #leftJoystick {
+            left: 20px;
+        }
+
+        #rightJoystick {
+            right: 20px;
+        }
+
+        @media (max-width: 768px) {
+            #gameContainer {
+                width: 95vw;
+                height: 70vh;
+            }
+            
+            #ui {
+                font-size: 8px;
+                padding: 0 10px;
+            }
+        }
+
+        /* Touch device detection */
+        @media (pointer: coarse) {
+            .joystick-container {
+                display: block;
+            }
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            font-size: 8px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="ui">
+            <div>
+                <div>🐍 Snake: <span id="snakeScore">2</span> 🍎</div>
+            </div>
+            <div>
+                <div>🟡 Pac-Man: <span id="pacmanPower">0s</span></div>
+            </div>
+        </div>
+        
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="gameOver">
+            <h2 id="winner"></h2>
+            <p id="winMessage"></p>
+            <button onclick="resetGame()">Play Again</button>
+        </div>
+
+        <div class="joystick-container" id="leftJoystick"></div>
+        <div class="joystick-container" id="rightJoystick"></div>
+
+        <div class="instructions">
+            Desktop: Snake (WASD) • Pac-Man (Arrow Keys) | Mobile: Use joysticks
+        </div>
+    </div>
+
+    <!-- Nipple.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.1/dist/nipplejs.min.js"></script>
+    
+    <script>
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.gameOver = false;
+                this.winner = null;
+                
+                // Game settings
+                this.gridSize = 20;
+                this.moveSpeed = 2; // pixels per frame for smooth movement
+                this.gameSpeed = 8; // frames between direction updates
+                this.frameCount = 0;
+                this.powerPelletSpawnTime = 15000; // 15 seconds
+                this.lastPowerPelletTime = 0;
+                this.powerUpDuration = 6000; // 6 seconds
+                
+                this.initCanvas();
+                this.initGame();
+                this.setupControls();
+                this.setupJoysticks();
+                this.gameLoop();
+            }
+
+            initCanvas() {
+                const container = document.getElementById('gameContainer');
+                const rect = container.getBoundingClientRect();
+                this.canvas.width = rect.width - 8; // Account for border
+                this.canvas.height = rect.height - 8;
+                
+                this.cols = Math.floor(this.canvas.width / this.gridSize);
+                this.rows = Math.floor(this.canvas.height / this.gridSize);
+            }
+
+            initGame() {
+                // Snake - starts smaller
+                this.snake = {
+                    body: [
+                        {x: 5 * this.gridSize, y: Math.floor(this.rows / 2) * this.gridSize},
+                        {x: 4 * this.gridSize, y: Math.floor(this.rows / 2) * this.gridSize}
+                    ],
+                    direction: {x: 1, y: 0},
+                    nextDirection: {x: 1, y: 0},
+                    isPredator: false,
+                    isVulnerable: false,
+                    segmentSize: 8 // smaller segments initially
+                };
+
+                // Pac-Man - starts bigger
+                this.pacman = {
+                    x: (this.cols - 5) * this.gridSize,
+                    y: Math.floor(this.rows / 2) * this.gridSize,
+                    direction: {x: -1, y: 0},
+                    nextDirection: {x: -1, y: 0},
+                    isPoweredUp: false,
+                    powerUpEndTime: 0,
+                    size: 15 // bigger than snake segments
+                };
+
+                // Game objects
+                this.food = [];
+                this.powerPellet = null;
+                this.lastPowerPelletTime = Date.now();
+                
+                this.spawnFood();
+                this.updateUI();
+            }
+
+            spawnFood() {
+                if (this.food.length < 4) {
+                    let x, y;
+                    do {
+                        x = Math.floor(Math.random() * (this.cols - 2) + 1) * this.gridSize;
+                        y = Math.floor(Math.random() * (this.rows - 2) + 1) * this.gridSize;
+                    } while (this.isOccupied(x, y));
+                    
+                    this.food.push({x, y, type: 'apple'});
+                }
+            }
+
+            spawnPowerPellet() {
+                if (!this.powerPellet) {
+                    let x, y;
+                    do {
+                        x = Math.floor(Math.random() * (this.cols - 2) + 1) * this.gridSize;
+                        y = Math.floor(Math.random() * (this.rows - 2) + 1) * this.gridSize;
+                    } while (this.isOccupied(x, y));
+                    
+                    this.powerPellet = {x, y};
+                }
+            }
+
+            isOccupied(x, y) {
+                const tolerance = 20; // collision tolerance
+                
+                // Check snake body
+                for (let segment of this.snake.body) {
+                    if (Math.abs(segment.x - x) < tolerance && Math.abs(segment.y - y) < tolerance) {
+                        return true;
+                    }
+                }
+                
+                // Check pac-man
+                if (Math.abs(this.pacman.x - x) < tolerance && Math.abs(this.pacman.y - y) < tolerance) {
+                    return true;
+                }
+                
+                // Check food
+                for (let f of this.food) {
+                    if (Math.abs(f.x - x) < tolerance && Math.abs(f.y - y) < tolerance) {
+                        return true;
+                    }
+                }
+                
+                // Check power pellet
+                if (this.powerPellet && Math.abs(this.powerPellet.x - x) < tolerance && Math.abs(this.powerPellet.y - y) < tolerance) {
+                    return true;
+                }
+                
+                return false;
+            }
+
+            setupControls() {
+                document.addEventListener('keydown', (e) => {
+                    if (this.gameOver) return;
+                    
+                    // Snake controls (WASD)
+                    switch(e.key.toLowerCase()) {
+                        case 'w':
+                            if (this.snake.direction.y !== 1) {
+                                this.snake.nextDirection = {x: 0, y: -1};
+                            }
+                            break;
+                        case 's':
+                            if (this.snake.direction.y !== -1) {
+                                this.snake.nextDirection = {x: 0, y: 1};
+                            }
+                            break;
+                        case 'a':
+                            if (this.snake.direction.x !== 1) {
+                                this.snake.nextDirection = {x: -1, y: 0};
+                            }
+                            break;
+                        case 'd':
+                            if (this.snake.direction.x !== -1) {
+                                this.snake.nextDirection = {x: 1, y: 0};
+                            }
+                            break;
+                    }
+                    
+                    // Pac-Man controls (Arrow keys)
+                    switch(e.key) {
+                        case 'ArrowUp':
+                            this.pacman.nextDirection = {x: 0, y: -1};
+                            e.preventDefault();
+                            break;
+                        case 'ArrowDown':
+                            this.pacman.nextDirection = {x: 0, y: 1};
+                            e.preventDefault();
+                            break;
+                        case 'ArrowLeft':
+                            this.pacman.nextDirection = {x: -1, y: 0};
+                            e.preventDefault();
+                            break;
+                        case 'ArrowRight':
+                            this.pacman.nextDirection = {x: 1, y: 0};
+                            e.preventDefault();
+                            break;
+                    }
+                });
+            }
+
+            setupJoysticks() {
+                if (typeof nipplejs === 'undefined') return;
+                
+                // Check if device supports touch
+                if (!('ontouchstart' in window)) return;
+                
+                // Left joystick for Snake
+                this.leftJoystick = nipplejs.create({
+                    zone: document.getElementById('leftJoystick'),
+                    mode: 'static',
+                    position: {left: '50%', top: '50%'},
+                    color: '#00ff00',
+                    size: 80
+                });
+
+                this.leftJoystick.on('dir', (evt, data) => {
+                    if (this.gameOver) return;
+                    
+                    const direction = data.direction.angle;
+                    if (direction === 'up' && this.snake.direction.y !== 1) {
+                        this.snake.nextDirection = {x: 0, y: -1};
+                    } else if (direction === 'down' && this.snake.direction.y !== -1) {
+                        this.snake.nextDirection = {x: 0, y: 1};
+                    } else if (direction === 'left' && this.snake.direction.x !== 1) {
+                        this.snake.nextDirection = {x: -1, y: 0};
+                    } else if (direction === 'right' && this.snake.direction.x !== -1) {
+                        this.snake.nextDirection = {x: 1, y: 0};
+                    }
+                });
+
+                // Right joystick for Pac-Man
+                this.rightJoystick = nipplejs.create({
+                    zone: document.getElementById('rightJoystick'),
+                    mode: 'static',
+                    position: {left: '50%', top: '50%'},
+                    color: '#ffff00',
+                    size: 80
+                });
+
+                this.rightJoystick.on('dir', (evt, data) => {
+                    if (this.gameOver) return;
+                    
+                    const direction = data.direction.angle;
+                    if (direction === 'up') {
+                        this.pacman.nextDirection = {x: 0, y: -1};
+                    } else if (direction === 'down') {
+                        this.pacman.nextDirection = {x: 0, y: 1};
+                    } else if (direction === 'left') {
+                        this.pacman.nextDirection = {x: -1, y: 0};
+                    } else if (direction === 'right') {
+                        this.pacman.nextDirection = {x: 1, y: 0};
+                    }
+                });
+            }
+
+            update(currentTime) {
+                if (this.gameOver) {
+                    return;
+                }
+                
+                this.frameCount++;
+                
+                // Update directions every few frames for responsive controls
+                if (this.frameCount % this.gameSpeed === 0) {
+                    this.snake.direction = {...this.snake.nextDirection};
+                    this.pacman.direction = {...this.pacman.nextDirection};
+                }
+                
+                // Move snake smoothly
+                this.moveSnake();
+                
+                // Move pac-man smoothly
+                this.movePacman();
+                
+                // Check power pellet spawning
+                if (currentTime - this.lastPowerPelletTime > this.powerPelletSpawnTime) {
+                    this.spawnPowerPellet();
+                    this.lastPowerPelletTime = currentTime;
+                }
+                
+                // Check power-up duration
+                if (this.pacman.isPoweredUp && currentTime > this.pacman.powerUpEndTime) {
+                    this.pacman.isPoweredUp = false;
+                    this.snake.isVulnerable = false;
+                }
+                
+                // Update predator status (when snake gets longer)
+                this.snake.isPredator = this.snake.body.length >= 15;
+                
+                // Check collisions
+                this.checkCollisions();
+                
+                // Spawn more food
+                this.spawnFood();
+                
+                // Update UI
+                this.updateUI();
+            }
+
+            moveSnake() {
+                // Move each segment smoothly
+                for (let i = 0; i < this.snake.body.length; i++) {
+                    if (i === 0) {
+                        // Move head
+                        this.snake.body[i].x += this.snake.direction.x * this.moveSpeed;
+                        this.snake.body[i].y += this.snake.direction.y * this.moveSpeed;
+                        
+                        // Check wall collision
+                        if (this.snake.body[i].x < 0 || this.snake.body[i].x >= this.canvas.width || 
+                            this.snake.body[i].y < 0 || this.snake.body[i].y >= this.canvas.height) {
+                            this.endGame('Pac-Man Wins!', 'Snake hit the wall');
+                            return;
+                        }
+                    } else if (this.frameCount % this.gameSpeed === 0) {
+                        // Move body segments in a following pattern
+                        const prev = this.snake.body[i - 1];
+                        const curr = this.snake.body[i];
+                        const distance = Math.sqrt(Math.pow(prev.x - curr.x, 2) + Math.pow(prev.y - curr.y, 2));
+                        
+                        if (distance > this.gridSize) {
+                            const angle = Math.atan2(prev.y - curr.y, prev.x - curr.x);
+                            curr.x += Math.cos(angle) * this.moveSpeed;
+                            curr.y += Math.sin(angle) * this.moveSpeed;
+                        }
+                    }
+                }
+                
+                // Check food collision with snake head only
+                if (this.frameCount % this.gameSpeed === 0) {
+                    const head = this.snake.body[0];
+                    this.food = this.food.filter(f => {
+                        const distance = Math.sqrt(Math.pow(head.x - f.x, 2) + Math.pow(head.y - f.y, 2));
+                        if (distance < 15) {
+                            // Grow snake
+                            const tail = this.snake.body[this.snake.body.length - 1];
+                            this.snake.body.push({x: tail.x, y: tail.y});
+                            this.snake.segmentSize = Math.min(this.snake.segmentSize + 1, 12); // grow segments
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+            }
+
+            movePacman() {
+                // Smooth movement for Pac-Man
+                this.pacman.x += this.pacman.direction.x * this.moveSpeed;
+                this.pacman.y += this.pacman.direction.y * this.moveSpeed;
+                
+                // Keep pac-man within bounds
+                if (this.pacman.x < this.pacman.size) this.pacman.x = this.pacman.size;
+                if (this.pacman.x > this.canvas.width - this.pacman.size) this.pacman.x = this.canvas.width - this.pacman.size;
+                if (this.pacman.y < this.pacman.size) this.pacman.y = this.pacman.size;
+                if (this.pacman.y > this.canvas.height - this.pacman.size) this.pacman.y = this.canvas.height - this.pacman.size;
+                
+                // Check power pellet collision
+                if (this.powerPellet) {
+                    const distance = Math.sqrt(Math.pow(this.pacman.x - this.powerPellet.x, 2) + Math.pow(this.pacman.y - this.powerPellet.y, 2));
+                    if (distance < 20) {
+                        this.powerPellet = null;
+                        this.pacman.isPoweredUp = true;
+                        this.pacman.powerUpEndTime = Date.now() + this.powerUpDuration;
+                        this.snake.isVulnerable = true;
+                    }
+                }
+            }
+
+            checkCollisions() {
+                // Check pac-man vs snake collision
+                for (let segment of this.snake.body) {
+                    const distance = Math.sqrt(Math.pow(this.pacman.x - segment.x, 2) + Math.pow(this.pacman.y - segment.y, 2));
+                    if (distance < this.pacman.size + this.snake.segmentSize) {
+                        if (this.pacman.isPoweredUp) {
+                            this.endGame('Pac-Man Wins!', 'Pac-Man ate the vulnerable snake');
+                        } else if (this.snake.isPredator && segment === this.snake.body[0]) {
+                            this.endGame('Snake Wins!', 'Predator snake caught Pac-Man');
+                        } else if (!this.snake.isPredator) {
+                            this.endGame('Pac-Man Wins!', 'Pac-Man touched the snake');
+                        }
+                        return;
+                    }
+                }
+            }
+
+            endGame(winner, message) {
+                this.gameOver = true;
+                this.winner = winner;
+                document.getElementById('winner').textContent = winner;
+                document.getElementById('winMessage').textContent = message;
+                document.getElementById('gameOver').style.display = 'block';
+            }
+
+            updateUI() {
+                document.getElementById('snakeScore').textContent = this.snake.body.length;
+                
+                if (this.pacman.isPoweredUp) {
+                    const remaining = Math.ceil((this.pacman.powerUpEndTime - Date.now()) / 1000);
+                    document.getElementById('pacmanPower').textContent = `${Math.max(0, remaining)}s`;
+                } else {
+                    document.getElementById('pacmanPower').textContent = '0s';
+                }
+            }
+
+            render() {
+                // Clear canvas
+                this.ctx.fillStyle = '#0f0f23';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Draw grid (subtle)
+                this.ctx.strokeStyle = '#1a1a3a';
+                this.ctx.lineWidth = 1;
+                for (let i = 0; i <= this.cols; i++) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(i * this.gridSize, 0);
+                    this.ctx.lineTo(i * this.gridSize, this.canvas.height);
+                    this.ctx.stroke();
+                }
+                for (let i = 0; i <= this.rows; i++) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, i * this.gridSize);
+                    this.ctx.lineTo(this.canvas.width, i * this.gridSize);
+                    this.ctx.stroke();
+                }
+                
+                // Draw apples (food)
+                for (let f of this.food) {
+                    // Apple body
+                    this.ctx.fillStyle = '#ff0000';
+                    this.ctx.beginPath();
+                    this.ctx.arc(f.x, f.y, 6, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    // Apple highlight
+                    this.ctx.fillStyle = '#ff6666';
+                    this.ctx.beginPath();
+                    this.ctx.arc(f.x - 2, f.y - 2, 2, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    // Apple stem
+                    this.ctx.fillStyle = '#8b4513';
+                    this.ctx.fillRect(f.x - 1, f.y - 8, 2, 4);
+                    
+                    // Apple leaf
+                    this.ctx.fillStyle = '#228b22';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(f.x + 3, f.y - 6, 3, 2, Math.PI / 4, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+                
+                // Draw power pellet
+                if (this.powerPellet) {
+                    this.ctx.fillStyle = '#ff69b4';
+                    this.ctx.beginPath();
+                    this.ctx.arc(this.powerPellet.x, this.powerPellet.y, 12, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    // Pulsing effect
+                    const time = Date.now() * 0.005;
+                    this.ctx.fillStyle = `rgba(255, 105, 180, ${0.3 + 0.3 * Math.sin(time)})`;
+                    this.ctx.beginPath();
+                    this.ctx.arc(this.powerPellet.x, this.powerPellet.y, 18, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+                
+                // Draw snake
+                for (let i = 0; i < this.snake.body.length; i++) {
+                    const segment = this.snake.body[i];
+                    const isHead = i === 0;
+                    
+                    if (this.snake.isVulnerable) {
+                        this.ctx.fillStyle = '#4169e1'; // Blue when vulnerable
+                    } else if (isHead && this.snake.isPredator) {
+                        // Glowing head effect
+                        const time = Date.now() * 0.01;
+                        this.ctx.fillStyle = `hsl(${120 + 30 * Math.sin(time)}, 100%, ${50 + 20 * Math.sin(time)}%)`;
+                    } else {
+                        this.ctx.fillStyle = isHead ? '#00ff00' : '#00cc00';
+                    }
+                    
+                    // Draw circular segments for smooth look
+                    this.ctx.beginPath();
+                    this.ctx.arc(segment.x, segment.y, this.snake.segmentSize, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    // Add some detail to snake head
+                    if (isHead && !this.snake.isVulnerable) {
+                        this.ctx.fillStyle = '#ffffff';
+                        // Eyes
+                        this.ctx.beginPath();
+                        this.ctx.arc(segment.x - 3, segment.y - 3, 2, 0, Math.PI * 2);
+                        this.ctx.fill();
+                        this.ctx.beginPath();
+                        this.ctx.arc(segment.x + 3, segment.y - 3, 2, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+                }
+                
+                // Draw Pac-Man
+                const pacX = this.pacman.x;
+                const pacY = this.pacman.y;
+                
+                if (this.pacman.isPoweredUp) {
+                    // Flashing effect when powered up
+                    const flashRate = Math.sin(Date.now() * 0.02);
+                    this.ctx.fillStyle = flashRate > 0 ? '#ffff00' : '#ffffff';
+                } else {
+                    this.ctx.fillStyle = '#ffff00';
+                }
+                
+                // Pac-Man body
+                this.ctx.beginPath();
+                this.ctx.arc(pacX, pacY, this.pacman.size, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // Pac-Man mouth
+                this.ctx.fillStyle = '#0f0f23';
+                this.ctx.beginPath();
+                
+                // Mouth direction based on movement
+                let mouthAngle = 0;
+                if (this.pacman.direction.x === 1) mouthAngle = 0;
+                else if (this.pacman.direction.x === -1) mouthAngle = Math.PI;
+                else if (this.pacman.direction.y === -1) mouthAngle = -Math.PI / 2;
+                else if (this.pacman.direction.y === 1) mouthAngle = Math.PI / 2;
+                
+                this.ctx.arc(
+                    pacX, pacY, 
+                    this.pacman.size,
+                    mouthAngle - Math.PI / 6,
+                    mouthAngle + Math.PI / 6
+                );
+                this.ctx.lineTo(pacX, pacY);
+                this.ctx.fill();
+                
+                // Pac-Man eye
+                this.ctx.fillStyle = '#000000';
+                this.ctx.beginPath();
+                this.ctx.arc(pacX - 3, pacY - 6, 3, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            gameLoop() {
+                const currentTime = Date.now();
+                
+                if (!this.gameOver) {
+                    this.update(currentTime);
+                }
+                
+                this.render();
+                requestAnimationFrame(() => this.gameLoop());
+            }
+
+            reset() {
+                this.gameOver = false;
+                this.winner = null;
+                document.getElementById('gameOver').style.display = 'none';
+                this.initGame();
+            }
+        }
+
+        let game;
+
+        function initGame() {
+            game = new Game();
+        }
+
+        function resetGame() {
+            game.reset();
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (game) {
+                game.initCanvas();
+            }
+        });
+
+        // Start the game when page loads
+        window.addEventListener('load', initGame);
+    </script>
+</body>
+</html>
