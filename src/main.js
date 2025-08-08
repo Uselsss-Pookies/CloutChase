@@ -47,6 +47,8 @@
   let cameraX = snakeCam.x;
   let cameraY = snakeCam.y;
   let cameraZoom = snakeCam.z;
+  // Active viewport role for conditional UI (e.g., arrows)
+  let currentViewportRole = null; // 'snake' | 'pacman' | null
 
   // Utility functions
   const rand = (min, max) => Math.random() * (max - min) + min;
@@ -482,6 +484,11 @@
     ctx.fill();
     ctx.restore();
     
+    // Entity-centric enemy arrow (retro) based on viewport role
+    if (currentViewportRole === 'snake') {
+      drawDirectionalIndicator(head.x, head.y, pacman.x, pacman.y, bodyRadius, 'rgba(126,231,255,0.95)');
+    }
+
     ctx.restore();
   }
 
@@ -521,38 +528,37 @@
     ctx.arc(ex, ey, pacman.radius * 0.18, 0, Math.PI * 2);
     ctx.fill();
 
+    if (currentViewportRole === 'pacman' && snake.points[0]) {
+      const head = snake.points[0];
+      drawDirectionalIndicator(pacman.x, pacman.y, head.x, head.y, pacman.radius, 'rgba(255,235,120,0.95)');
+    }
+
     ctx.restore();
   }
 
-  // Screen-space viewport edge indicator pointing towards angle from viewport center
-  function drawEdgeIndicator(viewX, viewY, viewW, viewH, angle, color) {
-    const pad = 16;
-    const cx = viewX + viewW / 2;
-    const cy = viewY + viewH / 2;
-    const dx = Math.cos(angle) || 1e-6;
-    const dy = Math.sin(angle) || 1e-6;
-    const limitX = viewW / 2 - pad;
-    const limitY = viewH / 2 - pad;
-    const tx = limitX / Math.abs(dx);
-    const ty = limitY / Math.abs(dy);
-    const t = Math.min(tx, ty);
-    const px = cx + dx * t;
-    const py = cy + dy * t;
+  // Retro entity-centric arrow (used within each viewport)
+  function drawDirectionalIndicator(fromX, fromY, toX, toY, baseRadius, color) {
+    const angle = Math.atan2(toY - fromY, toX - fromX);
+    const r = baseRadius + 18;
+    const px = fromX + Math.cos(angle) * r;
+    const py = fromY + Math.sin(angle) * r;
 
     ctx.save();
     ctx.translate(px, py);
     ctx.rotate(angle);
+    const size = Math.max(10, Math.min(18, baseRadius * 1.05));
+    // thick outline + fill for retro look
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = 'rgba(0,0,0,0.9)';
     ctx.fillStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 14;
-    const size = 10;
     ctx.beginPath();
     ctx.moveTo(size, 0);
-    ctx.lineTo(-size * 0.7, size * 0.7);
-    ctx.lineTo(-size * 0.7, -size * 0.7);
+    ctx.lineTo(-size * 0.6, size * 0.75);
+    ctx.lineTo(-size * 0.2, 0);
+    ctx.lineTo(-size * 0.6, -size * 0.75);
     ctx.closePath();
+    ctx.stroke();
     ctx.fill();
-    ctx.shadowBlur = 0;
     ctx.restore();
   }
 
@@ -650,21 +656,14 @@
 
     // Set active camera
     cameraX = cam.x; cameraY = cam.y; cameraZoom = cam.z;
+    currentViewportRole = role;
 
     drawBackground();
     drawFoods();
     drawSnake();
     drawPacman();
 
-    // Edge indicator per viewport role
-    const snakeHead = snake.points[0];
-    if (role === 'snake' && snakeHead) {
-      const angleToPac = Math.atan2(pacman.y - snakeHead.y, pacman.x - snakeHead.x);
-      drawEdgeIndicator(x, y, w, h, angleToPac, 'rgba(126,231,255,0.95)');
-    } else if (role === 'pacman' && snakeHead) {
-      const angleToSnake = Math.atan2(snakeHead.y - pacman.y, snakeHead.x - pacman.x);
-      drawEdgeIndicator(x, y, w, h, angleToSnake, 'rgba(255,235,120,0.95)');
-    }
+    // No edge indicator; entity-centric arrows are drawn in each role's draw call
 
     // Poster banner at top of viewport (screen-space)
     ctx.save();
