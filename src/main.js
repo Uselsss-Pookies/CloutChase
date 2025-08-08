@@ -29,7 +29,7 @@
   // Player snake settings
   const BASE_SPEED = 2.4; // world units per frame
   const BOOST_MULTIPLIER = 1.8;
-  const TURN_RATE = 0.085; // radians per frame
+  const TURN_RATE = 0.075; // radians per frame (smoother turning)
   const SEGMENT_SPACING = 6.5;
   const BASE_RADIUS = 6; // minimal snake thickness
   const INITIAL_LENGTH = 70; // starting length
@@ -40,7 +40,7 @@
   const FOOD_RESPAWN_TIME = 3500; // ms
 
   // Camera settings (split-screen)
-  const CAMERA_LERP = 0.08;
+  const CAMERA_LERP = 0.065;
   const snakeCam = { x: 0, y: 0, z: 1 };
   const pacCam = { x: 0, y: 0, z: 1 };
   // Legacy aliases used by pointer math and pre-refactor helpers
@@ -191,7 +191,8 @@
   }
   resetPacman();
 
-  let gameOver = null; // 'pacman' when pacman eats snake
+  let gameOver = null; // 'pacman' | 'snake'
+  let gameOverTimer = 0; // ms since game over started
 
   // HUD elements
   const scoreEl = document.getElementById('score');
@@ -287,7 +288,7 @@
     // Thickness growth based on length; smooth towards target
     const growth = Math.max(0, snake.lengthTarget - INITIAL_LENGTH);
     snake.radiusTarget = clamp(BASE_RADIUS + growth * 0.02, BASE_RADIUS, 28);
-    const lerpFactor = 0.12 * (dt / (1000 / 60));
+    const lerpFactor = 0.09 * (dt / (1000 / 60));
     snake.radiusActual = lerp(snake.radiusActual, snake.radiusTarget, lerpFactor);
 
     // P2 Pacman movement: Arrow keys
@@ -312,7 +313,7 @@
       pacman.angle = Math.atan2(-nx, ny) + Math.PI / 2;
     }
 
-    pacman.mouthPhase += 0.18 * (dt / (1000 / 60));
+    pacman.mouthPhase += 0.14 * (dt / (1000 / 60));
 
     // Camera follow and zoom for both views
     const targetZoom = clamp(1.1 - Math.min(0.5, snake.lengthTarget / 2400), 0.5, 1.1) * (input.boost ? 0.95 : 1);
@@ -486,7 +487,8 @@
     
     // Entity-centric enemy arrow (retro) based on viewport role
     if (currentViewportRole === 'snake') {
-      drawDirectionalIndicator(head.x, head.y, pacman.x, pacman.y, bodyRadius, 'rgba(126,231,255,0.95)');
+      // Snake shows enemy (Pacman) direction in Pacman yellow
+      drawDirectionalIndicator(head.x, head.y, pacman.x, pacman.y, bodyRadius, 'rgba(255,235,120,0.95)');
     }
 
     ctx.restore();
@@ -530,7 +532,8 @@
 
     if (currentViewportRole === 'pacman' && snake.points[0]) {
       const head = snake.points[0];
-      drawDirectionalIndicator(pacman.x, pacman.y, head.x, head.y, pacman.radius, 'rgba(255,235,120,0.95)');
+      // Pacman shows enemy (Snake) direction in Snake blue
+      drawDirectionalIndicator(pacman.x, pacman.y, head.x, head.y, pacman.radius, 'rgba(126,231,255,0.95)');
     }
 
     ctx.restore();
@@ -618,17 +621,18 @@
   }
 
   function isPacmanEncircled() {
-    if (snake.lengthTarget < 380) return false;
+    // Require significant length and a closed loop around Pacman
+    if (snake.lengthTarget < 520) return false;
     const origin = { x: pacman.x, y: pacman.y };
-    const snakeThickness = Math.max(snake.radiusActual * 0.9, BASE_RADIUS);
-    const directions = 16;
-    const maxDist = 800;
+    const snakeThickness = Math.max(snake.radiusActual * 0.95, BASE_RADIUS);
+    const directions = 24;
+    const maxDist = 700;
     let blocked = 0;
     for (let k = 0; k < directions; k++) {
       const ang = (k / directions) * Math.PI * 2;
       const dir = { x: Math.cos(ang), y: Math.sin(ang) };
       let nearest = Infinity;
-      for (let i = 1; i < snake.points.length; i += 2) {
+      for (let i = 2; i < snake.points.length; i += 2) {
         const a = snake.points[i - 1];
         const b = snake.points[i];
         const s = computeRaySegmentHitDistance(origin, dir, a, b, snakeThickness);
@@ -637,7 +641,8 @@
       }
       if (nearest < maxDist) blocked++;
     }
-    return blocked >= Math.ceil(directions * 0.75);
+    // Must be blocked in most directions to count as encircled
+    return blocked >= Math.ceil(directions * 0.85);
   }
 
   function renderViewport(x, y, w, h, cam, role) {
@@ -699,18 +704,24 @@
     ctx.fill();
     ctx.stroke();
 
-    // title text
-    ctx.fillStyle = 'white';
-    ctx.font = '800 16px Inter, ui-sans-serif, system-ui, -apple-system';
+    // retro title text centered
+    ctx.fillStyle = role === 'snake' ? 'rgba(120,200,255,1)' : '#ffd54a';
+    ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+    ctx.lineWidth = 2.5;
+    ctx.font = '20px "Press Start 2P", monospace';
     ctx.textBaseline = 'middle';
-    const label = role === 'snake' ? 'Snake' : 'Pacman';
-    ctx.fillText(label, x + 56, y + h / 2);
+    const label = role === 'snake' ? 'SNAKE' : 'PACMAN';
+    const textW = ctx.measureText(label).width;
+    const tx = x + w / 2 - textW / 2;
+    const ty = y + h / 2;
+    ctx.strokeText(label, tx, ty);
+    ctx.fillText(label, tx, ty);
 
     // icon
     if (role === 'snake') {
-      drawSnakeIcon(x + 20, y + h / 2, 22);
+      drawSnakeIcon(x + 22, y + h / 2, 18);
     } else {
-      drawPacmanIcon(x + 20, y + h / 2, 22);
+      drawPacmanIcon(x + w - 22, y + h / 2, 18);
     }
     ctx.restore();
   }
@@ -801,6 +812,11 @@
     if (!gameOver && isPacmanEncircled()) {
       gameOver = 'snake';
     }
+    if (gameOver) {
+      gameOverTimer += dt;
+    } else {
+      gameOverTimer = 0;
+    }
 
     // compose split screen
     const W = canvas.width / dpi;
@@ -815,28 +831,41 @@
     ctx.fillStyle = 'rgba(255,255,255,0.06)';
     ctx.fillRect(Math.floor(halfW) - 1, 0, 2, H);
 
-    // overlay labels
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.font = '600 13px Inter, ui-sans-serif, system-ui, -apple-system';
-    ctx.fillText('P1 Snake – WASD to steer, Space to boost', 14, 20);
-    ctx.fillText('P2 Pacman – Arrow keys to move', Math.floor(halfW) + 14, 20);
+    // (removed) overlay labels for P1/P2
 
-    if (gameOver === 'pacman') {
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    // Win overlay with blur B/W and smoother fade
+    if (gameOver) {
+      const t = Math.min(1, gameOverTimer / 1300);
+      // grayscale + blur backdrop
+      ctx.save();
+      ctx.filter = `grayscale(${0.6 + 0.4 * t}) blur(${2 + 3 * t}px)`;
+      ctx.drawImage(canvas, 0, 0); // subtle feedback; already drawn scene
+      ctx.restore();
+      // dark vignette
+      ctx.fillStyle = `rgba(0,0,0,${0.25 + t * 0.35})`;
       ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = 'white';
-      ctx.font = '800 32px Inter, ui-sans-serif, system-ui, -apple-system';
-      ctx.fillText('Pacman Wins!', W / 2 - 110, H / 2 - 8);
-      ctx.font = '600 16px Inter, ui-sans-serif, system-ui, -apple-system';
-      ctx.fillText('Press R to restart', W / 2 - 78, H / 2 + 18);
-    } else if (gameOver === 'snake') {
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      const grad = ctx.createRadialGradient(W / 2, H / 2, Math.max(W, H) * 0.25, W / 2, H / 2, Math.max(W, H) * (0.9));
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.6)');
+      ctx.fillStyle = grad;
       ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = 'white';
-      ctx.font = '800 32px Inter, ui-sans-serif, system-ui, -apple-system';
-      ctx.fillText('Snake Wins!', W / 2 - 110, H / 2 - 8);
-      ctx.font = '600 16px Inter, ui-sans-serif, system-ui, -apple-system';
-      ctx.fillText('Press R to restart', W / 2 - 78, H / 2 + 18);
+
+      // Winner text
+      const sub = gameOver === 'pacman' ? 'PACMAN WINS' : 'SNAKE WINS';
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `${Math.floor(56 + 10 * t)}px "Press Start 2P", monospace`;
+      ctx.fillStyle = `rgba(255,255,255,${0.95})`;
+      ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+      ctx.lineWidth = 6;
+      ctx.strokeText(sub, W / 2, H / 2 - 10);
+      ctx.fillText(sub, W / 2, H / 2 - 10);
+      // subline
+      ctx.font = '18px Inter, ui-sans-serif, system-ui, -apple-system';
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillText('Press R to restart', W / 2, H / 2 + 28);
+      ctx.restore();
     }
 
     requestAnimationFrame(frame);
@@ -851,6 +880,14 @@ window.addEventListener('keydown', (e) => {
     // Try to access closure bindings via a soft reload
     location.reload();
   }
+});
+
+// Intro overlay dismissal
+['click','keydown','touchstart'].forEach(evt => {
+  window.addEventListener(evt, () => {
+    const el = document.getElementById('intro');
+    if (el) el.style.display = 'none';
+  }, { once: true, passive: true });
 });
 
 

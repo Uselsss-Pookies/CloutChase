@@ -41,6 +41,68 @@ html, body {
   animation: flicker 2.2s infinite steps(60);
 }
 
+#intro {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(1200px 1200px at 50% 50%, rgba(10, 16, 36, 0.75) 0%, rgba(8, 12, 27, 0.85) 60%, rgba(7, 10, 20, 0.95) 100%);
+  z-index: 10;
+}
+
+#intro .panel {
+  width: min(780px, 92vw);
+  padding: 28px 24px;
+  border-radius: 16px;
+  background: rgba(0,0,0,0.65);
+  border: 1px solid rgba(255,255,255,0.15);
+  box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+  text-align: center;
+}
+
+#intro .title {
+  font-family: "Press Start 2P", monospace;
+  font-size: 28px;
+  color: #ffd54a;
+  text-shadow: 0 0 10px rgba(255,213,74,0.4), 0 0 18px rgba(255,213,74,0.2);
+}
+
+#intro .subtitle {
+  margin-top: 6px;
+  color: var(--subtle);
+}
+
+#intro .grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+#intro .role {
+  font-family: "Press Start 2P", monospace;
+  font-size: 16px;
+}
+
+#intro .col:first-child .role { color: #7dd3fc; }
+#intro .col:last-child .role { color: #ffd54a; }
+
+#intro .how {
+  margin-top: 6px;
+  color: var(--text);
+}
+
+#intro .tips {
+  margin-top: 14px;
+  color: #9aa0a6;
+}
+
+#intro .start {
+  margin-top: 18px;
+  font-family: "Press Start 2P", monospace;
+  color: var(--crt-green);
+}
+
 @keyframes flicker {
   0% { opacity: 0.35; }
   50% { opacity: 0.45; }
