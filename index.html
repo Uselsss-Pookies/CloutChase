@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <title>CloutChase - Slither Style Snake</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="scanlines"></div>
+
+    <div id="hud">
+      <div class="row">
+        <span class="label">Score</span>
+        <span id="score">0</span>
+      </div>
+      <div class="row">
+        <span class="label">Length</span>
+        <span id="length">0</span>
+      </div>
+      <div class="row small">
+        <span>Mouse/Touch to steer • Space/Double-tap: Boost</span>
+      </div>
+    </div>
+
+    <script src="./src/main.js"></script>
+  </body>
+  </html>
+
+
