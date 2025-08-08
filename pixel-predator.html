@@ -217,7 +217,7 @@
         <div id="ui">
             <div class="player-hud player1-hud">
                 <div>🐍 SNAKE</div>
-                <div>Length: <span id="snakeLength">4</span></div>
+                <div>Length: <span id="snakeLength">3</span></div>
                 <div id="predatorStatus">Normal</div>
             </div>
             
@@ -490,10 +490,8 @@
                     else if (angle >= 135 && angle < 225) direction = DIRECTIONS.LEFT;
                     else direction = DIRECTIONS.DOWN;
                     
-                    // Prevent reverse direction
-                    if (direction !== this.getOppositeDirection(this.snake.direction)) {
-                        this.snake.pendingDirection = direction;
-                    }
+                    // Snake can move freely
+                    this.snake.pendingDirection = direction;
                 });
 
                 // Right joystick for Pac-Man
@@ -516,7 +514,12 @@
                     else if (angle >= 135 && angle < 225) direction = DIRECTIONS.LEFT;
                     else direction = DIRECTIONS.DOWN;
                     
-                    this.pacman.pendingDirection = direction;
+                    // Pac-Man axis-only movement
+                    if ((direction === DIRECTIONS.UP || direction === DIRECTIONS.DOWN) && this.pacman.direction.x === 0) {
+                        this.pacman.pendingDirection = direction;
+                    } else if ((direction === DIRECTIONS.LEFT || direction === DIRECTIONS.RIGHT) && this.pacman.direction.y === 0) {
+                        this.pacman.pendingDirection = direction;
+                    }
                 });
             }
 
@@ -919,81 +922,149 @@
                 for (let i = 0; i < this.snake.segments.length; i++) {
                     const segment = this.snake.segments[i];
                     const isHead = i === 0;
+                    const centerX = this.offsetX + segment.x * this.cellSize;
+                    const centerY = this.offsetY + segment.y * this.cellSize;
                     
+                    // Segment size with growth animation
+                    const segmentRadius = this.snake.segmentSize * (1 + 0.1 * Math.sin(time + i * 0.5));
+                    
+                    // Color based on state
+                    let baseColor, glowColor;
                     if (this.pacman.isPowered) {
-                        // Vulnerable snake (blue)
-                        this.ctx.fillStyle = isHead ? '#4169e1' : '#2e4bc6';
+                        // Vulnerable snake (blue with electric effect)
+                        baseColor = isHead ? '#4169e1' : '#2e4bc6';
+                        glowColor = '#00ffff';
                     } else if (isHead && this.snake.isPredator) {
-                        // Predator head (glowing green)
-                        const glow = 0.7 + 0.3 * Math.sin(time);
-                        this.ctx.fillStyle = `hsl(120, 100%, ${50 + 20 * glow}%)`;
+                        // Predator head (glowing green with fire effect)
+                        const intensity = 0.7 + 0.3 * Math.sin(time * 3);
+                        baseColor = `hsl(120, 100%, ${50 + 30 * intensity}%)`;
+                        glowColor = '#00ff88';
                     } else {
-                        // Normal snake
-                        this.ctx.fillStyle = isHead ? '#00ff41' : '#00cc33';
+                        // Normal snake (green with nature effect)
+                        baseColor = isHead ? '#00ff41' : '#00cc33';
+                        glowColor = '#88ff88';
                     }
                     
-                    this.drawCell(segment.x, segment.y);
+                    // Outer glow
+                    const glowGradient = this.ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, segmentRadius * 2);
+                    glowGradient.addColorStop(0, `${glowColor}66`);
+                    glowGradient.addColorStop(1, `${glowColor}00`);
+                    this.ctx.fillStyle = glowGradient;
+                    this.ctx.beginPath();
+                    this.ctx.arc(centerX, centerY, segmentRadius * 2, 0, Math.PI * 2);
+                    this.ctx.fill();
                     
-                    // Draw predator glow effect
-                    if (isHead && this.snake.isPredator && !this.pacman.isPowered) {
-                        this.ctx.fillStyle = 'rgba(0, 255, 65, 0.3)';
-                        const centerX = this.offsetX + segment.x * this.cellSize + this.cellSize / 2;
-                        const centerY = this.offsetY + segment.y * this.cellSize + this.cellSize / 2;
-                        const glowSize = this.cellSize * (1.2 + 0.3 * Math.sin(time));
-                        
-                        this.ctx.beginPath();
-                        this.ctx.arc(centerX, centerY, glowSize / 2, 0, Math.PI * 2);
-                        this.ctx.fill();
+                    // Main body with gradient
+                    const bodyGradient = this.ctx.createRadialGradient(centerX - segmentRadius/3, centerY - segmentRadius/3, 0, centerX, centerY, segmentRadius);
+                    bodyGradient.addColorStop(0, '#ffffff');
+                    bodyGradient.addColorStop(0.3, baseColor);
+                    bodyGradient.addColorStop(1, this.pacman.isPowered ? '#000080' : (isHead && this.snake.isPredator ? '#004400' : '#002200'));
+                    
+                    this.ctx.fillStyle = bodyGradient;
+                    this.ctx.beginPath();
+                    this.ctx.arc(centerX, centerY, segmentRadius, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    // Scale pattern
+                    if (!isHead) {
+                        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                        for (let s = 0; s < 3; s++) {
+                            const scaleX = centerX + Math.cos(s * 2) * segmentRadius * 0.3;
+                            const scaleY = centerY + Math.sin(s * 2) * segmentRadius * 0.3;
+                            this.ctx.beginPath();
+                            this.ctx.arc(scaleX, scaleY, 2, 0, Math.PI * 2);
+                            this.ctx.fill();
+                        }
                     }
                     
-                    // Draw eyes on head
-                    if (isHead && !this.pacman.isPowered) {
+                    // Head details
+                    if (isHead) {
+                        // Eyes with glow
                         this.ctx.fillStyle = '#ffffff';
-                        const centerX = this.offsetX + segment.x * this.cellSize + this.cellSize / 2;
-                        const centerY = this.offsetY + segment.y * this.cellSize + this.cellSize / 2;
-                        const eyeSize = this.cellSize / 8;
+                        const eyeSize = segmentRadius / 4;
+                        const eyeOffset = segmentRadius / 2;
                         
+                        // Left eye
                         this.ctx.beginPath();
-                        this.ctx.arc(centerX - this.cellSize / 4, centerY - this.cellSize / 4, eyeSize, 0, Math.PI * 2);
+                        this.ctx.arc(centerX - eyeOffset/2, centerY - eyeOffset/2, eyeSize, 0, Math.PI * 2);
                         this.ctx.fill();
                         
+                        // Right eye
                         this.ctx.beginPath();
-                        this.ctx.arc(centerX + this.cellSize / 4, centerY - this.cellSize / 4, eyeSize, 0, Math.PI * 2);
+                        this.ctx.arc(centerX + eyeOffset/2, centerY - eyeOffset/2, eyeSize, 0, Math.PI * 2);
                         this.ctx.fill();
+                        
+                        // Pupils with predator glow
+                        this.ctx.fillStyle = this.snake.isPredator && !this.pacman.isPowered ? '#ff0000' : '#000000';
+                        this.ctx.beginPath();
+                        this.ctx.arc(centerX - eyeOffset/2, centerY - eyeOffset/2, eyeSize/2, 0, Math.PI * 2);
+                        this.ctx.fill();
+                        this.ctx.beginPath();
+                        this.ctx.arc(centerX + eyeOffset/2, centerY - eyeOffset/2, eyeSize/2, 0, Math.PI * 2);
+                        this.ctx.fill();
+                        
+                        // Predator aura
+                        if (this.snake.isPredator && !this.pacman.isPowered) {
+                            const auraGradient = this.ctx.createRadialGradient(centerX, centerY, segmentRadius, centerX, centerY, segmentRadius * 3);
+                            auraGradient.addColorStop(0, 'rgba(255, 100, 100, 0.6)');
+                            auraGradient.addColorStop(1, 'rgba(255, 100, 100, 0)');
+                            this.ctx.fillStyle = auraGradient;
+                            this.ctx.beginPath();
+                            this.ctx.arc(centerX, centerY, segmentRadius * 3, 0, Math.PI * 2);
+                            this.ctx.fill();
+                        }
                     }
                 }
             }
 
             drawPacman() {
                 const time = Date.now() * 0.01;
-                const centerX = this.offsetX + this.pacman.x * this.cellSize + this.cellSize / 2;
-                const centerY = this.offsetY + this.pacman.y * this.cellSize + this.cellSize / 2;
-                const radius = this.cellSize * 0.4;
+                const centerX = this.offsetX + this.pacman.x * this.cellSize;
+                const centerY = this.offsetY + this.pacman.y * this.cellSize;
                 
-                // Power glow effect
+                // Power glow effect (much larger since Pac-Man starts bigger)
                 if (this.pacman.isPowered) {
-                    const flash = Math.sin(time * 4);
-                    this.ctx.fillStyle = flash > 0 ? 'rgba(255, 255, 255, 0.5)' : 'rgba(255, 255, 0, 0.5)';
-                    this.ctx.beginPath();
-                    this.ctx.arc(centerX, centerY, radius * 1.5, 0, Math.PI * 2);
-                    this.ctx.fill();
+                    const powerPulse = 0.8 + 0.4 * Math.sin(time * 6);
+                    for (let i = 0; i < 4; i++) {
+                        const size = this.pacman.size * (2 + i * 0.5) * powerPulse;
+                        const alpha = (0.6 - i * 0.1) * powerPulse;
+                        
+                        const powerGradient = this.ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, size);
+                        powerGradient.addColorStop(0, `hsla(60, 100%, 80%, ${alpha})`);
+                        powerGradient.addColorStop(1, 'hsla(60, 100%, 80%, 0)');
+                        
+                        this.ctx.fillStyle = powerGradient;
+                        this.ctx.beginPath();
+                        this.ctx.arc(centerX, centerY, size, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
                 }
                 
-                // Body color
+                // Body color with power flashing
+                let bodyColor;
                 if (this.pacman.isPowered) {
-                    const flash = Math.sin(time * 3);
-                    this.ctx.fillStyle = flash > 0 ? '#ffffff' : '#ffff00';
+                    const flash = Math.sin(time * 8);
+                    bodyColor = flash > 0 ? '#ffffff' : '#ffff00';
                 } else {
-                    this.ctx.fillStyle = '#ffff00';
+                    bodyColor = '#ffff00';
                 }
                 
-                // Draw body
+                // Body with gradient
+                const bodyGradient = this.ctx.createRadialGradient(
+                    centerX - this.pacman.size/3, centerY - this.pacman.size/3, 0, 
+                    centerX, centerY, this.pacman.size
+                );
+                bodyGradient.addColorStop(0, '#ffffff');
+                bodyGradient.addColorStop(0.4, bodyColor);
+                bodyGradient.addColorStop(1, '#cc8800');
+                
+                this.ctx.fillStyle = bodyGradient;
                 this.ctx.beginPath();
-                this.ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                this.ctx.arc(centerX, centerY, this.pacman.size, 0, Math.PI * 2);
                 this.ctx.fill();
                 
-                // Draw mouth
-                this.ctx.fillStyle = '#001122';
+                // Animated mouth
+                this.ctx.fillStyle = '#000022';
                 this.ctx.beginPath();
                 
                 let mouthAngle = 0;
@@ -1002,20 +1073,70 @@
                 else if (this.pacman.direction === DIRECTIONS.UP) mouthAngle = -Math.PI / 2;
                 else if (this.pacman.direction === DIRECTIONS.DOWN) mouthAngle = Math.PI / 2;
                 
-                const mouthSize = Math.abs(Math.sin(time * 8)) * Math.PI / 4 + Math.PI / 6;
+                const mouthSize = Math.abs(Math.sin(this.pacman.mouthAnimation)) * Math.PI / 3 + Math.PI / 6;
                 
-                this.ctx.arc(centerX, centerY, radius, 
+                this.ctx.arc(centerX, centerY, this.pacman.size, 
                     mouthAngle - mouthSize, mouthAngle + mouthSize);
                 this.ctx.lineTo(centerX, centerY);
                 this.ctx.fill();
                 
-                // Draw eye
+                // Eye with shine
                 this.ctx.fillStyle = '#000000';
-                const eyeX = centerX + Math.cos(mouthAngle + Math.PI / 2) * radius * 0.3;
-                const eyeY = centerY + Math.sin(mouthAngle + Math.PI / 2) * radius * 0.3 - radius * 0.2;
+                const eyeX = centerX + Math.cos(mouthAngle + Math.PI/2) * this.pacman.size * 0.3;
+                const eyeY = centerY + Math.sin(mouthAngle + Math.PI/2) * this.pacman.size * 0.3 - this.pacman.size * 0.2;
+                const eyeSize = this.pacman.size * 0.15;
+                
                 this.ctx.beginPath();
-                this.ctx.arc(eyeX, eyeY, radius * 0.15, 0, Math.PI * 2);
+                this.ctx.arc(eyeX, eyeY, eyeSize, 0, Math.PI * 2);
                 this.ctx.fill();
+                
+                // Eye shine
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.beginPath();
+                this.ctx.arc(eyeX - eyeSize/3, eyeY - eyeSize/3, eyeSize/2, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            drawParticleEffects() {
+                // Add trailing particles for both characters when moving
+                const time = Date.now() * 0.01;
+                
+                // Snake trail particles
+                if (this.snake.direction.x !== 0 || this.snake.direction.y !== 0) {
+                    for (let i = 1; i < Math.min(this.snake.segments.length, 5); i++) {
+                        const segment = this.snake.segments[i];
+                        const centerX = this.offsetX + segment.x * this.cellSize;
+                        const centerY = this.offsetY + segment.y * this.cellSize;
+                        
+                        for (let p = 0; p < 3; p++) {
+                            const particleX = centerX + (Math.random() - 0.5) * 10;
+                            const particleY = centerY + (Math.random() - 0.5) * 10;
+                            
+                            this.ctx.fillStyle = `hsla(120, 70%, 50%, ${0.3 - i * 0.05})`;
+                            this.ctx.beginPath();
+                            this.ctx.arc(particleX, particleY, 1, 0, Math.PI * 2);
+                            this.ctx.fill();
+                        }
+                    }
+                }
+                
+                // Pac-Man trail particles when powered
+                if (this.pacman.isPowered) {
+                    const centerX = this.offsetX + this.pacman.x * this.cellSize;
+                    const centerY = this.offsetY + this.pacman.y * this.cellSize;
+                    
+                    for (let p = 0; p < 8; p++) {
+                        const angle = (p / 8) * Math.PI * 2 + time * 2;
+                        const distance = 15 + Math.random() * 10;
+                        const particleX = centerX + Math.cos(angle) * distance;
+                        const particleY = centerY + Math.sin(angle) * distance;
+                        
+                        this.ctx.fillStyle = `hsla(${p * 45 + time * 100}, 100%, 70%, 0.6)`;
+                        this.ctx.beginPath();
+                        this.ctx.arc(particleX, particleY, 2 + Math.random() * 2, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+                }
             }
 
             drawCell(x, y) {
