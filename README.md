@@ -51,7 +51,6 @@ open http://localhost:8080
 
 ### Project Documentation
 
-
 # Screenshots 
 
 <img width="2912" height="1996" alt="SS1" src="https://github.com/user-attachments/assets/49826621-52ab-4295-80e1-a9b690d48e72" />
