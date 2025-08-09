@@ -677,6 +677,25 @@
   }
 
   // Geometry helpers for encircle detection
+  function computeWindingAngleAroundPoint(px, py, polylinePoints, sampleStep = 2, maxSegments = 800) {
+    // Approximates winding by summing signed angle deltas from Pacman to successive points along the snake
+    // A value near 2π (or higher multiples) implies the body loops around the point
+    if (!polylinePoints || polylinePoints.length < 4) return 0;
+    let angleSum = 0;
+    const lastIndex = Math.min(polylinePoints.length - 1, maxSegments);
+    for (let i = 0; i < lastIndex; i += sampleStep) {
+      const a = polylinePoints[i];
+      const b = polylinePoints[Math.min(i + sampleStep, lastIndex)];
+      const angA = Math.atan2(a.y - py, a.x - px);
+      const angB = Math.atan2(b.y - py, b.x - px);
+      let d = angB - angA;
+      // wrap to [-π, π]
+      d = ((d + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      angleSum += d;
+    }
+    return Math.abs(angleSum);
+  }
+
   function computeRaySegmentHitDistance(rayOrigin, rayDir, segA, segB, radius) {
     // rayDir should be normalized
     const ex = segB.x - segA.x;
@@ -732,10 +751,18 @@
   }
 
   function isPacmanEncircled() {
-    // Require significant length and a closed loop around Pacman
+    // Require sufficient snake length to plausibly wrap
     if (snake.lengthTarget < 520) return false;
+
     const origin = { x: pacman.x, y: pacman.y };
     const snakeThickness = Math.max(snake.radiusActual * 0.95, BASE_RADIUS);
+
+    // 1) Winding check: ensure the snake body forms a loop around Pacman
+    const winding = computeWindingAngleAroundPoint(origin.x, origin.y, snake.points, 2, 900);
+    const hasLooped = winding >= Math.PI * 2 * 0.9; // ~full turn around Pacman
+    if (!hasLooped) return false;
+
+    // 2) Radial occlusion: most rays from Pacman hit the snake within a reasonable distance
     const directions = 24;
     const maxDist = 700;
     let blocked = 0;
@@ -752,7 +779,7 @@
       }
       if (nearest < maxDist) blocked++;
     }
-    // Must be blocked in most directions to count as encircled
+
     return blocked >= Math.ceil(directions * 0.85);
   }
 
