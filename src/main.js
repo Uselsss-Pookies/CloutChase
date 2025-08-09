@@ -126,6 +126,11 @@
     '#7dd3fc', '#a78bfa', '#f472b6', '#fca5a5', '#fdba74', '#fde68a', '#86efac'
   ];
   const foods = [];
+  // Power-ups and hazards
+  const powerUps = []; // { x, y, type, r, ttl }
+  const hazards = []; // { x, y, type, r, ttl }
+  const powerUpTypes = ['boost', 'shield', 'magnet', 'x2'];
+  const hazardTypes = ['speed', 'sand'];
   function spawnFood() {
     const angle = Math.random() * Math.PI * 2;
     const radius = Math.sqrt(Math.random()) * WORLD_RADIUS * 0.96;
@@ -139,6 +144,26 @@
   }
   for (let i = 0; i < FOOD_COUNT; i++) spawnFood();
 
+  function spawnPowerUp() {
+    const type = powerUpTypes[(Math.random() * powerUpTypes.length) | 0];
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.sqrt(Math.random()) * WORLD_RADIUS * 0.9;
+    powerUps.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, type, r: 10, ttl: 30000 });
+  }
+
+  function spawnHazard(kind, px, py) {
+    const type = kind || hazardTypes[(Math.random() * hazardTypes.length) | 0];
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.sqrt(Math.random()) * WORLD_RADIUS * 0.9;
+    const x = px ?? Math.cos(angle) * radius;
+    const y = py ?? Math.sin(angle) * radius;
+    const r = type === 'speed' ? 90 : 120;
+    hazards.push({ x, y, type, r, ttl: 20000 });
+  }
+
+  for (let i = 0; i < 5; i++) spawnPowerUp();
+  for (let i = 0; i < 4; i++) spawnHazard();
+
   // Snake body as a deque of points; head at index 0
   const snake = {
     points: [], // each: { x, y, angle }
@@ -149,6 +174,7 @@
     color: '#7ee7ff',
     radiusActual: BASE_RADIUS,
     radiusTarget: BASE_RADIUS,
+    effects: { boostUntil: 0, shieldUntil: 0, magnetUntil: 0, x2Until: 0 },
   };
 
   function resetSnake() {
@@ -176,6 +202,7 @@
     speed: 2.8,
     radius: 12,
     mouthPhase: 0,
+    effects: { boostUntil: 0, shieldUntil: 0, magnetUntil: 0 },
   };
   function resetPacman() {
     const head = snake.points[0];
@@ -193,6 +220,9 @@
 
   let gameOver = null; // 'pacman' | 'snake'
   let gameOverTimer = 0; // ms since game over started
+  let combo = 0;
+  let comboTimer = 0;
+  let shakeX = 0, shakeY = 0, shakeDecay = 0.88;
 
   // HUD elements
   const scoreEl = document.getElementById('score');
@@ -213,13 +243,28 @@
     if (keys.has('s')) snake.speed = BASE_SPEED * 0.8;
     input.targetAngle = target;
 
-    // Smooth turn towards target
+    // Smooth turn towards target (hazards affect turning applied later)
     let diff = ((input.targetAngle - snake.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-    snake.angle += clamp(diff, -TURN_RATE, TURN_RATE) * (dt / (1000 / 60));
+    // Timed effects and hazards
+    const now = performance.now();
+    const boostActive = input.boost || now < snake.effects.boostUntil;
+    let turnMult = 1;
+    for (const hz of hazards) {
+      if (dist2(hz.x, hz.y, snake.points[0].x, snake.points[0].y) < (hz.r * hz.r)) {
+        if (hz.type === 'sand') turnMult *= 0.7;
+      }
+    }
+    snake.angle += clamp(diff, -TURN_RATE * turnMult, TURN_RATE * turnMult) * (dt / (1000 / 60));
 
-    // Speed & boost
-    const boost = input.boost ? BOOST_MULTIPLIER : 1;
-    const speed = snake.speed * boost;
+    // Speed & boost + hazards
+    let speedMult = boostActive ? BOOST_MULTIPLIER : 1;
+    for (const hz of hazards) {
+      if (dist2(hz.x, hz.y, snake.points[0].x, snake.points[0].y) < (hz.r * hz.r)) {
+        if (hz.type === 'speed') speedMult *= 1.25;
+        if (hz.type === 'sand') speedMult *= 0.7;
+      }
+    }
+    const speed = snake.speed * speedMult;
 
     // Advance head
     const head = snake.points[0];
@@ -274,14 +319,18 @@
       const eatR = (effectiveRadius + 4) * (effectiveRadius + 4);
       if (d2 < eatR) {
         // Eat
-        score += Math.round(5 + f.r * 2);
-        snake.lengthTarget += 14 + f.r * 4; // grow more per food
+        combo += 1; comboTimer = 1500;
+        const comboMult = 1 + Math.min(3, Math.floor(combo / 5));
+        const x2Active = now < snake.effects.x2Until;
+        score += Math.round((5 + f.r * 2) * (x2Active ? 2 : 1) * comboMult);
+        snake.lengthTarget += (14 + f.r * 4) * (1 + 0.05 * comboMult);
         // Respawn later
         const respawnDelay = FOOD_RESPAWN_TIME + Math.random() * 2500;
         setTimeout(() => {
           spawnFood();
         }, respawnDelay);
         foods.splice(i, 1);
+        shakeX += 1.5; shakeY += 1.5;
       }
     }
 
@@ -302,8 +351,16 @@
       dirX /= mag; dirY /= mag;
       pacman.angle = Math.atan2(dirY, dirX);
     }
-    pacman.x += Math.cos(pacman.angle) * pacman.speed;
-    pacman.y += Math.sin(pacman.angle) * pacman.speed;
+    // Hazards for pacman
+    let pacSpeedMult = 1, pacTurnMult = 1;
+    for (const hz of hazards) {
+      if (dist2(hz.x, hz.y, pacman.x, pacman.y) < (hz.r * hz.r)) {
+        if (hz.type === 'speed') pacSpeedMult *= 1.22;
+        if (hz.type === 'sand') { pacSpeedMult *= 0.75; pacTurnMult *= 0.75; }
+      }
+    }
+    pacman.x += Math.cos(pacman.angle) * pacman.speed * pacSpeedMult;
+    pacman.y += Math.sin(pacman.angle) * pacman.speed * pacSpeedMult;
     // clamp pacman in world
     const pl = Math.hypot(pacman.x, pacman.y);
     if (pl > WORLD_RADIUS) {
@@ -328,9 +385,41 @@
     // HUD update throttled
     if ((update._hudTimer = (update._hudTimer || 0) + dt) > 80) {
       update._hudTimer = 0;
-      scoreEl.textContent = String(score);
+      const comboMult = 1 + Math.min(3, Math.floor(combo / 5));
+      scoreEl.textContent = combo > 0 ? `${score}  x${comboMult}` : String(score);
       lengthEl.textContent = String(Math.round(snake.lengthTarget));
     }
+    comboTimer -= dt; if (comboTimer <= 0) combo = 0;
+    // Timers and lifecycle
+    for (let i = powerUps.length - 1; i >= 0; i--) {
+      const p = powerUps[i];
+      p.ttl -= dt;
+      if (p.ttl <= 0) { powerUps.splice(i, 1); continue; }
+      // pickups
+      if (dist2(p.x, p.y, newHead.x, newHead.y) < Math.pow(snake.radiusActual + 10, 2)) {
+        applyPowerUp('snake', p.type);
+        powerUps.splice(i, 1);
+        continue;
+      }
+      if (dist2(p.x, p.y, pacman.x, pacman.y) < Math.pow(pacman.radius + 10, 2)) {
+        applyPowerUp('pacman', p.type);
+        powerUps.splice(i, 1);
+      }
+    }
+    for (let i = hazards.length - 1; i >= 0; i--) {
+      hazards[i].ttl -= dt;
+      if (hazards[i].ttl <= 0) hazards.splice(i, 1);
+    }
+  }
+
+  function applyPowerUp(target, type) {
+    const now = performance.now();
+    const eff = target === 'snake' ? snake.effects : pacman.effects;
+    const dur = 7000;
+    if (type === 'boost') eff.boostUntil = now + dur;
+    if (type === 'shield') eff.shieldUntil = now + dur;
+    if (type === 'magnet') eff.magnetUntil = now + dur;
+    if (type === 'x2' && target === 'snake') snake.effects.x2Until = now + dur;
   }
 
   // Rendering helpers
@@ -409,6 +498,28 @@
       ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
+    }
+
+    // power-ups
+    for (const p of powerUps) {
+      const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 26);
+      const col = p.type === 'shield' ? '#a78bfa' : p.type === 'magnet' ? '#f472b6' : p.type === 'x2' ? '#fde68a' : '#86efac';
+      glow.addColorStop(0, col + 'cc');
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 22, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#0b1024';
+      ctx.font = 'bold 10px Inter';
+      const sym = p.type === 'shield' ? '🛡' : p.type === 'magnet' ? '🧲' : p.type === 'x2' ? '×2' : '⚡';
+      ctx.fillText(sym, p.x - 7, p.y + 4);
+    }
+
+    for (const hz of hazards) {
+      ctx.strokeStyle = hz.type === 'speed' ? 'rgba(125, 211, 252, 0.35)' : 'rgba(250, 204, 21, 0.35)';
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.arc(hz.x, hz.y, hz.r, 0, Math.PI * 2); ctx.stroke();
     }
 
     ctx.restore();
