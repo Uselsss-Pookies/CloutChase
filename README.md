@@ -52,11 +52,9 @@ open http://localhost:8080
 ### Project Documentation
 
 
-# Screenshots (Add at least 3)
+# Screenshots 
 
-For Software:<img width="2912" height="1996" alt="SS1" src="https://github.com/user-attachments/assets/49826621-52ab-4295-80e1-a9b690d48e72" />
-
-
+<img width="2912" height="1996" alt="SS1" src="https://github.com/user-attachments/assets/49826621-52ab-4295-80e1-a9b690d48e72" />
 <img width="1461" height="740" alt="Screenshot 2025-08-09 at 6 24 20 AM" src="https://github.com/user-attachments/assets/9943c709-2367-49d8-a747-7952a2e90352" />
 <img width="1452" height="746" alt="Screenshot 2025-08-09 at 6 22 55 AM" src="https://github.com/user-attachments/assets/6367237d-d747-4023-89c4-743d6fd52882" />
 
