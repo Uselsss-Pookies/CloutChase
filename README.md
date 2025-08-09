@@ -9,9 +9,9 @@
 
 
 ### Team Members
-- Team Lead: Navaneeth Nandakumar - N/A
-- Member 2: Arfan M Thafseer - N/A
-- Member 3: TBD - N/A
+- Team Lead: Navaneeth Nandakumar
+- Member 2: Arfan M Thafseer 
+
 
 ### Project Description
 CloutChase is a fast, retro-styled browser game: a split-screen arena where one player is a glowing Snake (WASD + Space to boost) and the other is Pacman (arrow keys). The Snake grows by eating pellets and wins by encircling Pacman; Pacman wins by touching the Snake. Smooth HTML5 Canvas rendering, power-ups, hazards, and a CRT-inspired aesthetic make it arcadey and frantic.
