@@ -61,9 +61,7 @@ open http://localhost:8080
 
 ### Project Demo
 # Video
-N/A
-*Real-time browser gameplay; two players share one keyboard. Press R to restart.*
-
+https://github.com/user-attachments/assets/fcc591f4-7681-44e6-9afe-1d6406db84ac
 
 ## Team Contributions
 - Navaneeth Nandakumar: Core game loop, canvas rendering, snake mechanics, power-ups/hazards, collision/encircle logic.
